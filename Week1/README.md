@@ -11,12 +11,12 @@ Aanya - Devising a scheme for organizing song metadata, e.g. associating song ti
 Mihika - Writing the core functionality for storing fingerprints in the database, as well as querying the database and tallying the results of the query.
 
 Aahana, Shriyans - Designing an interface for the database, including the following functionality:
- * saving and loading the database
+ *saving and loading the database
  *inspecting the list of songs (and perhaps artists) that exist in the database
  *providing the ability to switch databases (optional)
  *deleting a song from a database (optional)
  *guarding against the adding the same song to the database multiple times (optional)
 
-Shriyans - Recording long clips of songs under various noise conditions (e.g. some should be clips from studio recordings, others recorded with little background noise, some with moderate background noise, etc.) so that you can begin to test and analyze the performance of your algorithm.
+Aahana, Shriyans - Recording long clips of songs under various noise conditions (e.g. some should be clips from studio recordings, others recorded with little background noise, some with moderate background noise, etc.) so that you can begin to test and analyze the performance of your algorithm.
 
 Spencer - Creating a function that can take an array of audio samples from a long (e.g. one minute) recording and produce random clips of it at a desired, shorter length. This can help with experimentation/analysis. For example you can record a 1 minutes clip of a song, played from your phone and then create many random 10 second clips from it and see if they all successfully match against your database.

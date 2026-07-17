@@ -1,3 +1,5 @@
+import numpy as np
+
 #1
 class Node:
     
@@ -41,7 +43,32 @@ class Node:
         self.truth = truth
         self.file_path = file_path
         
-        
+def create_graph(image_paths, cosine_threshold):
+    '''
+    create fcn that takes in list of image-paths and returns list of nodes and adj nodes
+    clean documentation
+    '''
+    nodes = []
+    adjacency_matrix = None
+
+    #create nodes
+    for node_id, descriptor in enumerate(image_paths):
+         node = Node(ID=node_id, neighbors=(), descriptor=descriptor, file_path=str(image_path))
+         nodes.append(node)
+
+    #create adjacency_matrix
+    adjacency_matrix = np.zeros((len(nodes), len(nodes)), dtype=float)
+
+    #compare all pairs of nodes using cosdist and costhreshold
+    for i in range(len(nodes)):
+        for j in range(i+1, len(nodes)):
+            distance = compute_cos_dist(nodes[i].descriptor, nodes[j].descriptor)
+            if (distance < cosine_threshold): #this might be wrong
+                adjacency_matrix[i][j] = 1 / np.square(distance)
+    return nodes, adjacency_matrix
+
+
+
         
 def plot_graph(graph, adj):
     """ Use the package networkx to produce a diagrammatic plot of the graph, with

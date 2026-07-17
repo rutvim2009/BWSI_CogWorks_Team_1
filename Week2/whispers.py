@@ -1,4 +1,7 @@
 import numpy as np
+import matplotlib as plt
+import os
+import random
 
 #1
 class Node:
@@ -42,7 +45,8 @@ class Node:
 
         self.truth = truth
         self.file_path = file_path
-        
+
+#2      
 def create_graph(image_paths, cosine_threshold):
     '''
     create fcn that takes in list of image-paths and returns list of nodes and adj nodes
@@ -206,3 +210,14 @@ def whispers(nodes, adjacency_matrix, num_iterations=100, plot_convergence=True)
 
 
 # ----------------------------------------------------------------------------------------------------------------
+
+dataset_path = "lfw-funneled"
+image_paths = []
+for person in people:
+    folder = os.path.join(dataset_path, person)
+
+    for file in os.listdir(folder):
+        if file.endswith(".jpg"):
+            image_paths.append(os.path.join(folder, file))
+
+print(f"Loaded {len(image_paths)} images.")

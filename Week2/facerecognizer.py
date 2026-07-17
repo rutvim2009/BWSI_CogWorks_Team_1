@@ -13,7 +13,6 @@ from facenet_models import FacenetModel
 import networkx as nx # for plot_graph
 import matplotlib.cm as cm # for plot_graph
 import matplotlib.pyplot as plt # for plot_graph
-from facenet_models import FacenetModel
 # ----------------------------------------------------------------------------------------------------------------
 
 #1 Create a Profile class with functionality to store face descriptors associated with a named individual.
@@ -25,9 +24,6 @@ class Profile:
         self.descriptors.append(descriptor)
 
 # ----------------------------------------------------------------------------------------------------------------
-    
-
-
 #2
 def new_database():    
     return {}
@@ -49,13 +45,13 @@ def add_profile(db, name, descriptors=None):
             prof.add_descriptor(d)
     db[name] = prof    
     
-def delete_profile(db, name):        
+def delete_profile(db, name):    
     if name not in db:
         raise KeyError(f"{name} is not in database") 
     del db[name]    
     
    
-def add_images(db, name, image, model):    
+def add_images(db, name, image, model): 
     result = model.detect(image)
     boxes = result[0] #the boxes around each person's face
     probs = result[1] #the probability [accuracy rate] of the face detection
@@ -94,12 +90,14 @@ def compute_cos_dist(desc_M, desc_N): #task 3
 # ----------------------------------------------------------------------------------------------------------------
 
 #5 
-def cosine_threshold(database, sample_size=int): 
+def cosine_threshold(database, sample_size=5): 
    '''
    plots histogram of small sample of overall people and how their distances are from themselves and other people to determine a good cutoff threshold
    '''
-
-   people = random.sample(database.values(), sample_size)
+   '''
+   commenting out right now so bugs in this code don't hinder with actual run since this is just for fine tuning
+   
+   people = random.sample(list(database.values()), sample_size)
    same_person_distances = []
    diff_person_distances = []
 
@@ -112,12 +110,13 @@ def cosine_threshold(database, sample_size=int):
                 diff_person_distances.append(compute_cos_dist(person.descriptors[d], other_person.descriptors[d+1]))   
         #plot and find good cutoff
        plt.hist(same_person_distances, label="same person")
-       plt.hist(diff_person_distances, label="different person")
+       plt.hist(diff_person_distances, density=True, label="different person")
        plt.xlabel("Cosine distance")
        plt.ylabel("density")
-       plt.show
-   cosine_threshold = 0.01 #temp placeholder val for other ppl to use while testing
-   return cosine_threshold
+       plt.show()
+       '''
+   cos_threshold = 0.01 #temp placeholder val for other ppl to use while testing
+   return cos_threshold
     
 # ----------------------------------------------------------------------------------------------------------------
 
@@ -181,7 +180,6 @@ def display_matches(image,boxes,names) : #creates a blank plot and display photo
         label = name if name else "Unknown"
         ax.text(x1,y2+15,label,color="red") #writes the name below the box using coordinates
 
-    return fig,ax
     return fig,ax
 
 

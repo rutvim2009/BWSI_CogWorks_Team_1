@@ -1,4 +1,3 @@
-from scipy import io
 from facerecognizer import *
 from whispers import *
 from facenet_models import FacenetModel
@@ -62,6 +61,15 @@ def show_live_feed(port=0, backend=cv2.CAP_DSHOW):
                 frame_bgr,
                 name,
                 (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2
+            )
+            cv2.putText(
+                frame_bgr,
+            "Confidence: " + str(round((1 - distance),3)),
+                (x1, y1 + 190),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
                 (0, 255, 0),

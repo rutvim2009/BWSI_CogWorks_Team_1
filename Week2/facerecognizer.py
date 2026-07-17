@@ -10,7 +10,7 @@ import pickle
 from pathlib import Path
 import random    
 from facenet_models import FacenetModel
-    
+import os
     
 import networkx as nx # for plot_graph
 import matplotlib.cm as cm # for plot_graph
@@ -22,8 +22,10 @@ class Profile:
     def __init__(self, name):
         self.name=name 
         self.descriptors=[]
-    def add_descriptor(self,descriptor):
+        self.image_paths = []
+    def add_descriptor(self,descriptor, image_path=None):
         self.descriptors.append(descriptor)
+        self.image_paths.append(image_path)
 
 # ----------------------------------------------------------------------------------------------------------------
 #2
@@ -52,7 +54,24 @@ def delete_profile(db, name):
         raise KeyError(f"{name} is not in database") 
     del db[name]    
     
-   
+
+
+def add_images(db, name, image, model, image_path=None): # <--- Added image_path
+    boxes, probs, features = model.detect(image)
+    if boxes is None or len(boxes) == 0:
+        print(f"No faces detected in the image for {name}.")
+        return
+
+    descriptors = model.compute_descriptors(image, boxes) 
+    descriptor = descriptors[0]    
+
+    if name not in db:    
+        db[name] = Profile(name)
+    
+    # Pass the image path into your profile tracking system
+    db[name].add_descriptor(descriptor, image_path=image_path)
+
+"""
 def add_images(db, name, image, model): 
     boxes, probs, features = model.detect(image)
     if boxes is None or len(boxes) == 0:
@@ -66,7 +85,7 @@ def add_images(db, name, image, model):
         db[name] = Profile(name)
     
     db[name].add_descriptor(descriptor)
-    
+"""
 # ----------------------------------------------------------------------------------------------------------------
 
 #3 
@@ -123,7 +142,7 @@ def cosine_threshold(database, sample_size=5):
        plt.ylabel("density")
        plt.show()
        '''
-   cos_threshold = 0.4 #temp placeholder val for other ppl to use while testing
+   cos_threshold = 0.5 #temp placeholder val for other ppl to use while testing
    return cos_threshold
     
 # ----------------------------------------------------------------------------------------------------------------
@@ -217,33 +236,50 @@ def display_matches(image,boxes,names, query_descriptors=None, database_profiles
     return fig,ax
 
 
-def find_top_4_sim_faces(query_descriptor, database_profiles, k=4):
+def find_top_4_sim_faces(query_descriptor, database_profiles, query_name, k=4):
     all_cand = []
     for profile in database_profiles:
         for idx, desc in enumerate(profile.descriptors):
-            img_ref = (profile.image_paths[idx] if hasattr(profile, 'image_paths') and len(profile.image.paths) > idx else None)
+            img_ref = (profile.image_paths[idx] if hasattr(profile, 'image_paths') and len(profile.image_paths) > idx else None)
 
             all_cand.append({'name': profile.name, 'descriptor': desc, 'image': img_ref})
             
     if not all_cand:
         return []
     
-    query_matrix = query_descriptor.reshape(1, -1)
+    query_matrix = np.array(query_descriptor).flatten().reshape(1, -1)
+    
     db_matrix = np.array([c['descriptor'] for c in all_cand])
-            
+    print("Query:", query_matrix.shape)
+    print("Database:", db_matrix.shape)    
     distances = compute_cos_dist(query_matrix, db_matrix)[0]
 
     sorted_indices = np.argsort(distances)
 
     top_matches = []
 
-    for i in range(min(k, len(sorted_indices))):
-        idx = sorted_indices[i]
-        top_matches.append({
-            'name': all_cand[idx]['name'], 
-            'distance': distances[idx], 
-            'image': all_cand[idx]['image']})
+    #for i in range(min(k, len(sorted_indices))):
+        #idx = sorted_indices[i]
+        #if all_cand[idx]['name'] != query_descriptor.super.name:
+            #top_matches.append({
+                #'name': all_cand[idx]['name'], 
+                #'distance': distances[idx]})
+        #else: pass
     
-    return top_matches
+    #return top_matches
 
+    top_matches = []
+
+    for idx in sorted_indices:
+        if all_cand[idx]['name'] != query_name:
+            top_matches.append({
+                'name': all_cand[idx]['name'],
+                'distance': distances[idx],
+                'image': all_cand[idx]['image']
+        })
+
+        if len(top_matches) == k:
+            break
+
+    return top_matches
 

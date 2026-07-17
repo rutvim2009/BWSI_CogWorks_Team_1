@@ -1,7 +1,7 @@
 # imports
 
 import io
-
+import imageio
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
 import cv2
@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt # for plot_graph
 
 #1 Create a Profile class with functionality to store face descriptors associated with a named individual.
 class Profile:
-    def _init_(self, name):
+    def __init__(self, name):
         self.name=name 
         self.descriptors=[]
     def add_descriptor(self,descriptor):
@@ -54,16 +54,18 @@ def delete_profile(db, name):
     
    
 def add_images(db, name, image, model): 
-    result = model.detect(image)
-    boxes = result[0] #the boxes around each person's face
-    probs = result[1] #the probability [accuracy rate] of the face detection
-    features = result[2] #essential features of the face [e.g. nose, ears]
+    boxes, probs, features = model.detect(image)
+    if boxes is None or len(boxes) == 0:
+        print(f"No faces detected in the image for {name}.")
+        return
+
     descriptors = model.compute_descriptors(image, boxes) #one descriptor per box
     descriptor = descriptors[0]    
+
     if name not in db:    
         db[name] = Profile(name)
-    profile = db[name]
-    profile.add_descriptor(descriptor)
+    
+    db[name].add_descriptor(descriptor)
     
 # ----------------------------------------------------------------------------------------------------------------
 
@@ -76,7 +78,7 @@ def compute_cos_dist(desc_M, desc_N): #task 3
     norm_N = np.where(norm_N == 0, 1.0, norm_N)
 
     normalized_M = desc_M / norm_M
-    normalized_N = desc_N / normalized_N
+    normalized_N = desc_N / norm_N
 
     cos_simil = np.dot(normalized_M, normalized_N.T)
     cos_dist = 1.0 - cos_simil
@@ -89,16 +91,10 @@ def compute_cos_dist(desc_M, desc_N): #task 3
 # ----------------------------------------------------------------------------------------------------------------
 def jpg_to_rgb(image_path = None, image = None):
     if image is None:
-        image = io.imread(str(image_path))
-        if image.shape[-1] == 4:
-            #Image is RGBA, where A is alpha -> transparency
-            # Must make image RGB.
-            image = image[..., :-1]  # png -> RGB
-    else:
-        if image.shape[-1] == 4:
-            #Image is RGBA, where A is alpha -> transparency
-            # Must make image RGB.
-            image = image[..., :-1]  # png -> RGB
+        image = imageio.imread(str(image_path))
+    if image.shape[-1] == 4:
+        image = image[..., :-1]  # png -> RGB
+    return image
 # ----------------------------------------------------------------------------------------------------------------
 
 #5 
@@ -119,7 +115,7 @@ def cosine_threshold(database, sample_size=5):
            for other_person in people: #can also compare against diff person avg (probably better ngl)
                 if other_person is person:
                     continue
-                diff_person_distances.append(compute_cos_dist(person.descriptors[d], other_person.descriptors[d+1]))   
+                diff_person_distances.append(compute_cos_dist(person.descriptors[d][0, 0], compute_cos_dist(other_person.descriptors[d+1])[0, 0]))   
         #plot and find good cutoff
        plt.hist(same_person_distances, label="same person")
        plt.hist(diff_person_distances, density=True, label="different person")
@@ -127,7 +123,7 @@ def cosine_threshold(database, sample_size=5):
        plt.ylabel("density")
        plt.show()
        '''
-   cos_threshold = 0.01 #temp placeholder val for other ppl to use while testing
+   cos_threshold = 0.4 #temp placeholder val for other ppl to use while testing
    return cos_threshold
     
 # ----------------------------------------------------------------------------------------------------------------
@@ -177,8 +173,11 @@ def identify_face(new_descriptor, profile_database, threshold):
 
 #7 
 
-def display_matches(image,boxes,names) : #creates a blank plot and display photo on it
-    fig, ax = plt.subplots()
+def display_matches(image,boxes,names, query_descriptors=None, database_profiles=None) : #creates a blank plot and display photo on it
+    fig = plt.figure(figsize=(10,8))
+    grid = plt.GridSpec(2, 4, wspace=0.4, hspace=0.3)
+    
+    ax = fig.add_subplot(grid[0,:])
     ax.imshow(image)
 
     #go through each face detected and its matched name toget
@@ -192,6 +191,29 @@ def display_matches(image,boxes,names) : #creates a blank plot and display photo
         label = name if name else "Unknown"
         ax.text(x1,y2+15,label,color="red") #writes the name below the box using coordinates
 
+    ax.axis('off')
+
+    if query_descriptors is not None and len(query_descriptors) > 0 and database_profiles is not None:
+        first_face_desc = query_descriptors[0]
+        similar_faces = find_top_4_sim_faces(first_face_desc, database_profiles, k=4)
+
+        for rank, match in enumerate(similar_faces):
+            ax_match = fig.add_subplot(grid[1, rank])
+
+            if match['image'] is not None:
+                if isinstance(match['image'], str):
+                    match_img = cv2.imread(match['image'])
+                    match_img = cv2.cvtColor(match_img, cv2.COLOR_BGR2RGB)
+                else:
+                    match_img = match['image']
+                ax_match.imshow(match_img)
+            else:
+                placeholder = np.zeros((100, 100, 3), dtype=np.uint8)
+                ax_match.imshow(placeholder)
+                ax_match.text(50, 50, "no image", color='white', ha='center', va='center')
+            ax_match.set_title(f"#{rank+1}: {match['name']}\nDist: {match['distance']:.3f}", fontsize=9)
+            ax_match.axis('off')
+    
     return fig,ax
 
 
@@ -207,5 +229,21 @@ def find_top_4_sim_faces(query_descriptor, database_profiles, k=4):
         return []
     
     query_matrix = query_descriptor.reshape(1, -1)
-    db_matrix = np.array([c['descriptor'] for c in all_candidates])
+    db_matrix = np.array([c['descriptor'] for c in all_cand])
             
+    distances = compute_cos_dist(query_matrix, db_matrix)[0]
+
+    sorted_indices = np.argsort(distances)
+
+    top_matches = []
+
+    for i in range(min(k, len(sorted_indices))):
+        idx = sorted_indices[i]
+        top_matches.append({
+            'name': all_cand[idx]['name'], 
+            'distance': distances[idx], 
+            'image': all_cand[idx]['image']})
+    
+    return top_matches
+
+

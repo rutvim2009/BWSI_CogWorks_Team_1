@@ -1,8 +1,13 @@
+from pyexpat import model
+from pathlib import Path
+
 import numpy as np
-import matplotlib as plt
+import networkx as nx
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import os
 import random
-
+from facerecognizer import compute_cos_dist, jpg_to_rgb
 #1
 class Node:
     
@@ -17,7 +22,7 @@ class Node:
 
         neighbors : Sequence[int]
             The node-IDs of the neighbors of this node.
-
+i
         descriptor : numpy.ndarray
             The shape-(512,) descriptor vector for the face that this node corresponds to.
 
@@ -57,7 +62,18 @@ def create_graph(image_paths, cosine_threshold):
 
     #create nodes
     for node_id, image_path in enumerate(image_paths):
-         node = Node(ID=node_id, neighbors=(), descriptor=jpg_to_rgb(image_path), file_path=str(image_path))
+         img = jpg_to_rgb(image_path)
+         boxes, prob = model.detect(img)
+         if boxes is None or len(boxes) == 0:
+             continue
+         descriptor = model.compute_descriptors(img, boxes)[0]
+         node = Node(
+             ID=node_id, 
+             neighbors=(), 
+             descriptor=descriptor, 
+             file_path=str(image_path),
+            truth = Path(image_path).parent.name
+         )
          nodes.append(node)
 
     #create adjacency_matrix
@@ -66,11 +82,15 @@ def create_graph(image_paths, cosine_threshold):
     #compare all pairs of nodes using cosdist and costhreshold
     for i in range(len(nodes)):
         for j in range(i+1, len(nodes)):
-            distance = compute_cos_dist(nodes[i].descriptor, nodes[j].descriptor)
-            if (distance < cosine_threshold): #this might be wrong
+            descriptor_i = np.assaray(nodes[i].descriptor).reshape(1, -1)
+            descriptor_j = np.assaray(nodes[j].descriptor).reshape(1, -1)
+            distance = compute_cos_dist(descriptor_i, descriptor_j)[0, 0]
+            if (distance <= cosine_threshold): 
                 adjacency_matrix[i][j] = 1 / np.square(distance)
+                adjacency_matrix[j][i] = 1 / np.square(distance)
+                nodes[i].neighbors.append(nodes[j])
+                nodes[j].neighbors.append(nodes[i])
     return nodes, adjacency_matrix
-
 
 
         
@@ -138,7 +158,7 @@ def propagate_label(node, neighbors, adjacency_matrix): #Weigh the neighbors bas
         best_weight, best_label = max(pairs, key=lambda pair: pair[0])
         node.label = best_label
 
-#--------------------------------
+#----------------------------------------------------------------------------------------------------------
 
 def connected_components(nodes):
     groups = {}
@@ -146,7 +166,7 @@ def connected_components(nodes):
     for node in nodes:
         if node.label not in groups:
             groups[node.label] = []
-        groups[node.label].append
+        groups[node.label].append(node)
 
 
     return list(groups.values())
@@ -168,7 +188,7 @@ def propagate_label(node, neighbors, adjacency_matrix): #Weigh the neighbors bas
 def whispers(nodes, adjacency_matrix, num_iterations=100, plot_convergence=True):
 
     for i, node in enumerate(nodes):
-        nodes.label = i
+        nodes[i].label = i
         node.id = i
 
     neighbor_lookup = []
@@ -191,7 +211,7 @@ def whispers(nodes, adjacency_matrix, num_iterations=100, plot_convergence=True)
         propagate_label(random_node, neighbors, adjacency_matrix)
 
         if step == 1 or step % 50 == 0 or step == num_iterations:
-            components = connected_components[nodes]
+            components = connected_components(nodes)
             hist_iter.append(step)
             hist_comp_counts.append(len(components))
         
@@ -211,7 +231,8 @@ def whispers(nodes, adjacency_matrix, num_iterations=100, plot_convergence=True)
 
 # ----------------------------------------------------------------------------------------------------------------
 
-dataset_path = "lfw-funneled"
+"""dataset_path = "lfw-funneled"
+people = os.listdir(dataset_path)
 image_paths = []
 for person in people:
     folder = os.path.join(dataset_path, person)
@@ -220,4 +241,4 @@ for person in people:
         if file.endswith(".jpg"):
             image_paths.append(os.path.join(folder, file))
 
-print(f"Loaded {len(image_paths)} images.")
+print(f"Loaded {len(image_paths)} images.")"""

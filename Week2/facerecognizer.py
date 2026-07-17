@@ -1,5 +1,7 @@
 # imports
 
+import io
+
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from PIL import Image
 import cv2
@@ -85,8 +87,18 @@ def compute_cos_dist(desc_M, desc_N): #task 3
 
 
 # ----------------------------------------------------------------------------------------------------------------
-
-
+def jpg_to_rgb(image_path = None, image = None):
+    if image is None:
+        image = io.imread(str(image_path))
+        if image.shape[-1] == 4:
+            #Image is RGBA, where A is alpha -> transparency
+            # Must make image RGB.
+            image = image[..., :-1]  # png -> RGB
+    else:
+        if image.shape[-1] == 4:
+            #Image is RGBA, where A is alpha -> transparency
+            # Must make image RGB.
+            image = image[..., :-1]  # png -> RGB
 # ----------------------------------------------------------------------------------------------------------------
 
 #5 
@@ -183,3 +195,17 @@ def display_matches(image,boxes,names) : #creates a blank plot and display photo
     return fig,ax
 
 
+def find_top_4_sim_faces(query_descriptor, database_profiles, k=4):
+    all_cand = []
+    for profile in database_profiles:
+        for idx, desc in enumerate(profile.descriptors):
+            img_ref = (profile.image_paths[idx] if hasattr(profile, 'image_paths') and len(profile.image.paths) > idx else None)
+
+            all_cand.append({'name': profile.name, 'descriptor': desc, 'image': img_ref})
+            
+    if not all_cand:
+        return []
+    
+    query_matrix = query_descriptor.reshape(1, -1)
+    db_matrix = np.array([c['descriptor'] for c in all_candidates])
+            

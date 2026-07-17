@@ -56,8 +56,8 @@ def create_graph(image_paths, cosine_threshold):
     adjacency_matrix = None
 
     #create nodes
-    for node_id, descriptor in enumerate(image_paths):
-         node = Node(ID=node_id, neighbors=(), descriptor=descriptor, file_path=str(image_path))
+    for node_id, image_path in enumerate(image_paths):
+         node = Node(ID=node_id, neighbors=(), descriptor=jpg_to_rgb(image_path), file_path=str(image_path))
          nodes.append(node)
 
     #create adjacency_matrix
@@ -140,7 +140,7 @@ def propagate_label(node, neighbors, adjacency_matrix): #Weigh the neighbors bas
 
 #--------------------------------
 
-def connected__components(nodes):
+def connected_components(nodes):
     groups = {}
             
     for node in nodes:
@@ -193,7 +193,7 @@ def whispers(nodes, adjacency_matrix, num_iterations=100, plot_convergence=True)
         if step == 1 or step % 50 == 0 or step == num_iterations:
             components = connected_components[nodes]
             hist_iter.append(step)
-            hist_comp_counts.append(lens(components))
+            hist_comp_counts.append(len(components))
         
 
     if plot_convergence:

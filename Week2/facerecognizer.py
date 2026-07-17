@@ -94,26 +94,30 @@ def compute_cos_dist(desc_M, desc_N): #task 3
 # ----------------------------------------------------------------------------------------------------------------
 
 #5 
-def cosine_threshold(sample_size=int): 
+def cosine_threshold(database, sample_size=int): 
    '''
    plots histogram of small sample of overall people and how their distances are from themselves and other people to determine a good cutoff threshold
    '''
 
-   #people = #small sample from overall people
+   people = random.sample(database.values(), sample_size)
    same_person_distances = []
    diff_person_distances = []
 
    for person in people:
        for d in range(len(person.descriptors) -1): #for each person, compare against self and add to same_person_distances
            same_person_distances.append(compute_cos_dist(person.descriptors[d], person.descriptors[d+1]))
-           
            for other_person in people: #can also compare against diff person avg (probably better ngl)
                 if other_person is person:
                     continue
-               diff_person_distances.append(compute_cos_dist(person.descriptors[d], other_person.descriptors[d+1]))   
-   #plot and find good cutoff
-    cosine_threshold = 0.01 #temp placeholder val for other ppl to use while testing
-    return cosine_threshold
+                diff_person_distances.append(compute_cos_dist(person.descriptors[d], other_person.descriptors[d+1]))   
+        #plot and find good cutoff
+       plt.hist(same_person_distances, label="same person")
+       plt.hist(diff_person_distances, label="different person")
+       plt.xlabel("Cosine distance")
+       plt.ylabel("density")
+       plt.show
+   cosine_threshold = 0.01 #temp placeholder val for other ppl to use while testing
+   return cosine_threshold
     
 # ----------------------------------------------------------------------------------------------------------------
 

@@ -230,6 +230,7 @@ Model training and funcitonality for saving/loading trained weights
 
 def train_model(training_set, model, coco, batch_size = 32, learning_rate=1e-3, momentum=0.9): 
     optim = SGD(model.parameters, learning_rate = learning_rate, momentum = momentum)
+    accuracies = []
     for i in range(0, len(training_set), batch_size):
         batch = training_set[i:i+batch_size]
         caption_embedded = []
@@ -243,20 +244,20 @@ def train_model(training_set, model, coco, batch_size = 32, learning_rate=1e-3, 
             #image id to resnet descriptors
             true_image_d.append(coco.descriptor(image_ID))
             confusor_d.append(coco.descriptor(confusor_image_ID))
+        #shape embeddings
+        caption_embedded = np.array(caption_embedded, dtype=np.float32)
+        true_image_d = np.array(true_image_d, dtype=np.float32)
+        confusor_d = np.array(confusor_d, dtype=np.float32)
 
-            #resnet descriptors to trainable image embeddings
+        #resnet descriptors to trainable image embeddings
         true_images = model(true_image_d)
         confusor_images = model(confusor_d)
-        caption_embedded = np.array(caption_embedded).reshape(1, -1)
-        true_images = np.array(true_images).reshape(1, -1)
-        confusor_images = np.array(confusor_images).reshape(1, -1)
 
         #compare caption with both images
         good_similarity = mg.einsum("nd, nd ->n", caption_embedded, true_images)
         bad_similarity = mg.einsum("nd,nd->n", caption_embedded, confusor_images)
         loss = compute_loss(good_similarity, bad_similarity)
         accuracy = compute_accuracy(good_similarity, bad_similarity)
-        accuracies = []
         accuracies.append(accuracy)
         loss.backward()
         optim.step()
@@ -265,16 +266,14 @@ def train_model(training_set, model, coco, batch_size = 32, learning_rate=1e-3, 
 #need to write save and load weights functionality
 def save_weights(model, path):
     weights = [parameter.data.copy() for parameter in model.parameters]
-    with open(path, "weights") as file:
+    with open(path, "wb") as file:
         pickle.dump(weights, file)
 def load_weights(model, path):
-    with open(path, "load") as file:
+    with open(path, "rb") as file:
         weights = pickle.load(file)
     for parameter, weight in zip(model.parameters, weights):
         parameter.data[...] = weight
     return model
-#why do you have compute loss and compute accuracy as inputs? you guh
-#bc im using the fcns rutvi wrote wait nvm just realized mb gng
 # ---------- Batch-Embeds and Image Library (Part 6 : Jesse) ---------
 
 def embed_images(model, features):

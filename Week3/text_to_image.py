@@ -1,10 +1,16 @@
-import gensim
 import pickle
 import re, string
 from collections import defaultdict
 import numpy as np
 import mygrad as mg
-from load_coco import coco_data, glove
+from mynn.optimizers.sgd import SGD
+from load_coco import coco_data
+from gensim.models import KeyedVectors
+glove = KeyedVectors.load(r"C:\Users\spenc\BWSI_CogWorks_Team_1\Week3\glove.6B.200d.kv", mmap='r')
+import random
+from mygrad.nnet.initializers import glorot_normal
+from mygrad.nnet.losses import margin_ranking_loss
+import mynn.layers.dense as dense
 
 # ---------- Batch-Embeds and Image Library (Part 6) ---------
 
@@ -12,7 +18,7 @@ from load_coco import coco_data, glove
 #------------------------------------------------------------------------------------------
 #Aahana (Task 1)
 class Coco:
-    def init(self, coco_data, descriptors=None):
+    def __init__(self, coco_data, descriptors=None):
         """
         builds and organizes the dataset. stores all the mappings.
         """
@@ -45,32 +51,33 @@ class Coco:
                     filtered_urls[img_id] = url
                 else:
                     continue #skips all imgs with no descriptors
+                
             self.img_id_to_url = filtered_urls
-        #dictionaries for captions
-        self.caption_id_to_caption = {}
-        self.caption_id_to_img_id = {}
-        self.img_id_to_caption_id = {}
+            #dictionaries for captions
+            self.caption_id_to_caption = {}
+            self.caption_id_to_img_id = {}
+            self.img_id_to_caption_id = {}
 
-        #goes thru all the captions
-        #goes thru all the captions and assigns them vals
-        for i in coco_data["annotations"]:
-            img_id = i["image_id"]
-            caption_id = i["id"]
-            caption = i["caption"]
+            #goes thru all the captions
+            #goes thru all the captions and assigns them vals
+            for i in coco_data["annotations"]:
+                img_id = i["image_id"]
+                caption_id = i["id"]
+                caption = i["caption"]
 
-            #ignore filtered imgs
-            if img_id not in self.img_id_to_url:
-                continue
+                #ignore filtered imgs
+                if img_id not in self.img_id_to_url:
+                    continue
 
-            #maps captions and imgs
-            self.caption_id_to_caption[caption_id] = caption
-            self.caption_id_to_img_id[caption_id] = img_id
+                #maps captions and imgs
+                self.caption_id_to_caption[caption_id] = caption
+                self.caption_id_to_img_id[caption_id] = img_id
 
-            #attaches the captions to the img
-            if img_id in self.img_id_to_caption_id:
-                self.img_id_to_caption_id[img_id].append(caption_id)
-            else:
-                self.img_id_to_caption_id[img_id] = [caption_id]
+                #attaches the captions to the img
+                if img_id in self.img_id_to_caption_id:
+                    self.img_id_to_caption_id[img_id].append(caption_id)
+                else:
+                    self.img_id_to_caption_id[img_id] = [caption_id]
 
         #stores the lists of img + caption ids
         self.img_ids = sorted(self.img_id_to_caption_id)
@@ -123,7 +130,68 @@ def embed_text(tokens, glove, idf):
     return embedding
     
 
+#------------------------------------------------------------------------------------------------------
+# Rutvi (Task 4)
 
+class ImageEmbedder:
+    """Linear model mapping 512-D ResNet descriptors to 200-D shared semantic space."""
+    
+    def __init__(self, input_dim: int = 512, output_dim: int = 200):
+        self.dense = dense(
+            input_size=input_dim,
+            output_size=output_dim,
+            weight_initializer=glorot_normal,
+            bias=False
+        )
+
+    def __call__(self, x: mg.Tensor) -> mg.Tensor:
+        out = self.dense(x)
+        norms = mg.sqrt(mg.sum(out**2, axis=-1, keepdims=True) + 1e-8)
+        return out / norms
+
+    @property
+    def parameters(self):
+        """Returns layer parameters for optimization."""
+        return self.dense.parameters
+
+
+def generate_triplets(valid_image_ids, img_to_caps_map, split_ratio=0.8, seed=42):
+    random.seed(seed)
+    all_img_ids = list(valid_image_ids)
+    random.shuffle(all_img_ids)
+
+    split_idx = int(len(all_img_ids) * split_ratio)
+    train_img_ids = set(all_img_ids[:split_idx])
+    val_img_ids = set(all_img_ids[split_idx:])
+
+    def create_set_triplets(image_ids_set):
+        triplets = []
+        img_list = list(image_ids_set)
+        for true_img_id in img_list:
+            captions = img_to_caps_map[true_img_id]
+            for cap_id in captions:
+                confusor_img_id = random.choice(img_list)
+                while confusor_img_id == true_img_id:
+                    confusor_img_id = random.choice(img_list)
+                
+                triplets.append((cap_id, true_img_id, confusor_img_id))
+        return triplets
+    
+    train_triplets = create_set_triplets(train_img_ids)
+    val_triplets = create_set_triplets(val_img_ids)
+    
+    return train_triplets, val_triplets
+
+def compute_loss(sim_true: mg.Tensor, sim_confusor: mg.Tensor, margin: float = 0.25) -> mg.Tensor:
+    y = np.ones(sim_true.shape, dtype=np.float32)
+    return margin_ranking_loss(sim_true, sim_confusor, y, margin=margin)
+
+def compute_accuracy(sim_true: mg.Tensor, sim_confusor: mg.Tensor, margin: float = 0.25) -> float:
+    s_true = sim_true.data if isinstance(sim_true, mg.Tensor) else sim_true
+    s_conf = sim_confusor.data if isinstance(sim_confusor, mg.Tensor) else sim_confusor
+    
+    satisfied = (s_true - s_conf) >= margin
+    return float(np.mean(satisfied))
 
 #------------------------------------------------------------------------------------------
 #Spencer (Task 2)
@@ -146,14 +214,13 @@ for annotation in coco_data["annotations"]:
     words = set(caption_processor(annotation["caption"]))
     for word in words:
         vocab[word] += 1
-vocab = sorted(vocab.items(), key = lambda x: x[1], reverse= True)
-words = list(vocab.keys())
+vocab_sorted = sorted(vocab.items(), key=lambda x: x[1], reverse=True)
+words = [word for word, count in vocab_sorted]
 counts = np.array(list(vocab.values()))
 idf_values = np.log10(ncaption/counts)
-IDF = dict(zip(words, idf_values))
+idf = dict(zip(words, idf_values))
 
-#____
-_
+#________
 
 #----------------------------------------------------------------------------------------
 #Mihika 
@@ -161,27 +228,53 @@ _
 Model training and funcitonality for saving/loading trained weights
 '''
 
-def train_model(training_set): 
-    captions = []
-    true_images = []
-    confusor_images = []
-   for caption_ID, image_ID, confusor_image_ID in training_set:
-       capt
-       #compare similarities
-       #compute loss and accuracy
-       #take optimization step (mygrad)
-    
-    .backward()
-    
+def train_model(training_set, model, coco, batch_size = 32, learning_rate=1e-3, momentum=0.9): 
+    optim = SGD(model.parameters, learning_rate = learning_rate, momentum = momentum)
+    for i in range(0, len(training_set), batch_size):
+        batch = training_set[i:i+batch_size]
+        caption_embedded = []
+        true_image_d = []
+        confusor_d = []
+        for caption_ID, image_ID, confusor_image_ID in batch:
+            #caption id to embedding
+            caption = coco.caption_id_to_caption[caption_ID]
+            tokens = caption_processor(caption)
+            caption_embedded.append(embed_text(tokens, glove, idf))
+            #image id to resnet descriptors
+            true_image_d.append(coco.descriptor(image_ID))
+            confusor_d.append(coco.descriptor(confusor_image_ID))
 
+            #resnet descriptors to trainable image embeddings
+        true_images = model(true_image_d)
+        confusor_images = model(confusor_d)
+        caption_embedded = np.array(caption_embedded).reshape(1, -1)
+        true_images = np.array(true_images).reshape(1, -1)
+        confusor_images = np.array(confusor_images).reshape(1, -1)
 
-    
-
-
-
-
-
-
+        #compare caption with both images
+        good_similarity = mg.einsum("nd, nd ->n", caption_embedded, true_images)
+        bad_similarity = mg.einsum("nd,nd->n", caption_embedded, confusor_images)
+        loss = compute_loss(good_similarity, bad_similarity)
+        accuracy = compute_accuracy(good_similarity, bad_similarity)
+        accuracies = []
+        accuracies.append(accuracy)
+        loss.backward()
+        optim.step()
+    print(accuracies)
+        
+#need to write save and load weights functionality
+def save_weights(model, path):
+    weights = [parameter.data.copy() for parameter in model.parameters]
+    with open(path, "weights") as file:
+        pickle.dump(weights, file)
+def load_weights(model, path):
+    with open(path, "load") as file:
+        weights = pickle.load(file)
+    for parameter, weight in zip(model.parameters, weights):
+        parameter.data[...] = weight
+    return model
+#why do you have compute loss and compute accuracy as inputs? you guh
+#bc im using the fcns rutvi wrote wait nvm just realized mb gng
 # ---------- Batch-Embeds and Image Library (Part 6 : Jesse) ---------
 
 def embed_images(model, features):
@@ -223,17 +316,11 @@ class ImageDatabase:
         obj.embeddings = data["embeddings"]
         obj._idd_to_row = {img_id: i for i, img_id in enumerate}
 
-
-
-
-
-
-
 #7 Shriyans
 def query_database(caption_embedding, image_database, k=5):
     ids = list(image_database.keys())
     embeddings = np.array([image_database[i] for i in ids])
     scores = embeddings @ caption_embedding
     ranked = sorted(zip(ids, scores), key=lambda pair: - pair[1])
-    return [img_id for img_d, score in ranked[:k]]
+    return [img_id for img_id, score in ranked[:k]]
     
